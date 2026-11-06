@@ -1,0 +1,11 @@
+# Git holds the framework only: the command, the template, notes and the script.
+# All podcast content stays local.
+
+# Personal sources files (CONTENT, goals, current questions). Keep only the template.
+sources/*
+!sources/_template.md
+
+# Everything a run creates: settings, profiles, notes, transcripts, digests, scripts,
+# NotebookLM files, mp3 episodes, feeds and logs. Keep only the script that makes them.
+podcast-digest/*
+!podcast-digest/podcast

@@ -57,6 +57,7 @@ Since:
 
 <!--
 The CONTENT to follow. Type is Written (blogs, articles, newsletters, docs updates) or Podcast.
+Type File is a local Markdown or text file, its full path in the Feed URL column; it is read once, and again whenever it changes.
 You can give just the name and leave the Feed URL blank:
 the command finds the RSS or Atom feed and checks that it parses.
 YouTube channels: name them, but the command uses the show's audio podcast feed instead (or leaves the channel out).

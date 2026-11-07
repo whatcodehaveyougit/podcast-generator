@@ -10,7 +10,7 @@ Everything runs on your Mac and on demand. There is no scheduler yet.
 
 1. **Fetch.** Reads each RSS or Atom feed in the sources file and picks up items published since the look-back date (first run) or not yet seen (later runs). At most 10 items per run, oldest first.
 2. **Read.** Written CONTENT is read as text, fetching the full page when the feed only has a summary. Podcast episodes use the publisher's transcript (captions or PDF). Whisper is supported but not installed, so episodes with no published transcript are skipped and listed in the digest.
-3. **Screen.** Each item goes to `claude -p` with no tools, from an empty folder, with your profile and a strict reply format: a two-sentence summary and up to six insights, each with a category, a weight from 1 to 5, how to use it, and a timestamp or section.
+3. **Screen.** Each item goes to `claude -p` with no tools, from an empty folder, with `USER.md` (who you are), your profile and a strict reply format: a two-sentence summary and up to six insights, each with a category, a weight from 1 to 5, how to use it, and a timestamp or section.
 4. **Digest.** Pending notes become one markdown digest: Act on this, What I covered, one section per category, Worth a full listen or read, and How the system ran.
 5. **Voice.** Claude writes a two-host script from the digest. Gemini TTS (`gemini-3.8-flash-tts`) voices it, with macOS voices as the fallback. Episodes over five minutes are shortened and voiced again.
 
@@ -33,6 +33,10 @@ podcast-digest/podcast run <name>
 ```
 
 Other subcommands: `test`, `fetch`, `rescreen`, `preview`, `digest`, `voice`, `audio` and `canary`. Run the script with no arguments to see them.
+
+## About you: USER.md
+
+`USER.md` at the project root says who you are, your mission, who you work for and what you want to learn. Every podcast reads it: screening and the digest use it to judge what matters to you, and the episode script uses it to pick emphasis and examples. Template comments and blank fields are ignored, so you can fill it in a bit at a time. It is gitignored.
 
 ## Making a new podcast
 
@@ -73,10 +77,10 @@ podcast-digest/
   podcasts/<name>/
     profile.md                      built from the sources file
     notes/  transcripts/  logs/
-    digests/<date>.md               the digest
-    digests/<date>-script.md        the two-host script
-    digests/<date>-notebooklm.md    a fuller file for NotebookLM
-  public/<name>/episodes/<date>-digest.mp3
+    digests/<date>.md                     the digest
+    digests/<date>-with-source-notes.md   the digest plus every source note behind it
+    episode-scripts/<date>.md             the two-host script that was voiced
+  public/<name>/episodes/<date>.mp3
 ```
 
 Episodes are sent to a phone by AirDrop for now. A private feed server is included, but it does not work on networks that stop devices talking to each other. Tailscale is the next step for that.

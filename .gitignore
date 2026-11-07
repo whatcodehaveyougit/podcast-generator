@@ -5,7 +5,14 @@
 sources/*
 !sources/_template.md
 
+# Who I am: personal, shared by every podcast.
+USER.md
+
 # Everything a run creates: settings, profiles, notes, transcripts, digests, scripts,
 # NotebookLM files, mp3 episodes, feeds and logs. Keep only the script that makes them.
 podcast-digest/*
 !podcast-digest/podcast
+!podcast-digest/feed_server.py
+
+# Local settings and any keys. Copy .env.example to .env.
+.env

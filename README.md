@@ -83,7 +83,7 @@ podcast-digest/
   public/<name>/episodes/<date>.mp3
 ```
 
-Episodes are sent to a phone by AirDrop for now. A private feed server is included, but it does not work on networks that stop devices talking to each other. Tailscale is the next step for that.
+Episodes reach the phone through a private podcast feed in a Cloudflare R2 bucket, so the Mac does not need to be awake for listening. The phone uses Tailscale as its VPN, with the tailnet's DNS set to get around the ISP's block on r2.dev. Setup, and why it is built this way: [setup-podcasts-feed.md](setup-podcasts-feed.md).
 
 ## Safety
 

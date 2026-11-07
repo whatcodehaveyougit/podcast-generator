@@ -21,7 +21,7 @@ Cloudflare R2 bucket  podcast-digest
   <random-prefix>/<podcast>/episodes/*.mp3
   │
   ▼
-iPhone: Apple Podcasts (with the 1.1.1.1 app on, see "Network block" below)
+iPhone: Apple Podcasts (with Tailscale on, see "Tailscale on the phone" below)
 ```
 
 - Every `run`, `digest`, `voice`, `audio` and `publish` rewrites the feeds and uploads what changed.
@@ -35,10 +35,11 @@ iPhone: Apple Podcasts (with the 1.1.1.1 app on, see "Network block" below)
 2. **Fixed playback.** Apple Podcasts needs byte-range requests (HTTP 206). `http.server` ignores them, so episodes did not play. Replaced it with `podcast-digest/feed_server.py`: supports ranges, no folder listings, serves only `public/`. The launchd agent now runs that. The old agent is backed up in `podcast-digest/logs/feed.plist.bak`.
 3. **Descriptive episode names.** Each digest gets a topic title (one `claude -p` call, no tools). It names the digest, the NotebookLM file, the episode script and the mp3 (`2026-11-06-core-and-spam-updates-...`), and shows in the app as "Search Updates, 6 Nov 2026: ...". Titles are stored in `public/<podcast>/titles.json`.
 4. **One feed for everything.** Added `public/all/feed.xml`, rebuilt whenever any podcast's feed changes.
-5. **Feed off the home network.** Google Drive was ruled out: its share links are viewer pages, large files hit a virus-scan page, and podcast apps need direct file links with range support. Tailscale (private VPN) was the other option but needs the Mac awake. Chose **Cloudflare R2** (free up to 10 GB, free downloads, S3 API, range support).
+5. **Feed off the home network.** Google Drive was ruled out: its share links are viewer pages, large files hit a virus-scan page, and podcast apps need direct file links with range support. Tailscale (private VPN) was the other option for serving episodes but needs the Mac awake. Chose **Cloudflare R2** (free up to 10 GB, free downloads, S3 API, range support).
 6. **Upload code.** The script signs S3 requests itself (AWS Signature V4, Python standard library only) and uploads changed files, episodes before feeds. A failed upload never loses anything: the local feed is already written and the next run retries.
 7. **Free-tier guard.** Bucket kept under 10 GB (see "Storage limits").
-8. **Network block.** The ISP on this connection (Biznet, Indonesia) blocks `*.r2.dev` by answering DNS lookups with its own address. The bucket itself works. Fixed on the phone with Cloudflare's 1.1.1.1 app. The sturdier fix is a custom domain (Option B below).
+8. **Network block.** The ISP on this connection (Biznet, Indonesia) blocks `*.r2.dev` by answering DNS lookups with its own address. The bucket itself works. First fixed on the phone with Cloudflare's 1.1.1.1 app. The sturdier fix is a custom domain (Option B below).
+9. **Tailscale replaced 1.1.1.1.** The phone now uses Tailscale as its VPN. The tailnet's DNS settings send every lookup to Cloudflare's resolvers, so r2.dev works without the 1.1.1.1 app. The Mac can join the same tailnet, which also makes the home feed server reachable when away (see "Tailscale on the phone").
 
 ## Option A: set it up with r2.dev (what we use now)
 
@@ -100,7 +101,7 @@ curl -s -o /dev/null -r 0-99 -w "%{http_code}\n" <an enclosure url from the feed
 
 ### 5. Phone
 
-1. Install **1.1.1.1: Faster Internet** (Cloudflare, free) and switch it on. It is needed wherever the network blocks r2.dev.
+1. Install **Tailscale**, sign in to the tailnet and switch it on. Check the tailnet's DNS settings first (see "Tailscale on the phone"): without them, r2.dev stays blocked.
 2. Apple Podcasts → **Library** → **…** → **Follow a Show by URL** → paste `<R2_PUBLIC_BASE>/<prefix>/all/feed.xml`.
 3. Unfollow any older per-podcast or home-Wi-Fi feeds, or episodes show twice.
 4. Show settings → **Download Episodes** on.
@@ -109,7 +110,7 @@ curl -s -o /dev/null -r 0-99 -w "%{http_code}\n" <an enclosure url from the feed
 
 A subdomain such as `podcasts.7hillsonline.com` instead of `pub-<id>.r2.dev`. Why:
 
-- Not caught by blocks on `*.r2.dev`, so the 1.1.1.1 app is no longer needed.
+- Not caught by blocks on `*.r2.dev`, so the phone no longer depends on Tailscale's DNS settings to reach the feed.
 - r2.dev is rate-limited and Cloudflare says it is not for production. A custom domain is not, and it gets Cloudflare's cache.
 - The URL stays the same even if the bucket changes.
 
@@ -131,10 +132,36 @@ Steps:
 
    Episode files do not need re-uploading; only the feeds change. Episode IDs (guids) are based on the file names, not the address, so apps do not show duplicates.
 5. Check: `curl -s -o /dev/null -w "%{http_code}\n" https://podcasts.<your-domain>/<prefix>/all/feed.xml` → 200.
-6. Phone: follow the new URL `https://podcasts.<your-domain>/<prefix>/all/feed.xml`, unfollow the old r2.dev one, then switch the 1.1.1.1 app off if you like.
+6. Phone: follow the new URL `https://podcasts.<your-domain>/<prefix>/all/feed.xml`, unfollow the old r2.dev one. Tailscale can stay on; the feed no longer needs it.
 7. Optional: bucket **Settings** → **Public Development URL** → **Disallow**, so the old r2.dev URL stops working.
 
 Keep the random prefix even on your own domain: it is what keeps the feed unguessable.
+
+## Tailscale on the phone
+
+The phone uses Tailscale as its VPN (it replaced Cloudflare's 1.1.1.1 app). Tailscale does not get around the r2.dev block by itself: unless the tailnet overrides DNS, the phone still asks the ISP's DNS servers and gets the wrong address. Set the tailnet's DNS once:
+
+1. Tailscale admin console → **DNS** → **Nameservers** → **Global nameservers** → **Add nameserver** → **Cloudflare** (1.1.1.1). Add **Google** too if you want a second one.
+2. Switch on **Override DNS servers** (in older consoles, **Override local DNS**). Without it, devices keep using the network's own DNS for public names.
+3. Phone: Tailscale app → settings → **Use Tailscale DNS** on. Keep the VPN connected (the app's **VPN On Demand** setting keeps it connected).
+4. Check: Apple Podcasts refreshes the feed on mobile data and on the blocked Wi-Fi.
+
+### Auth key (optional)
+
+Devices normally join the tailnet by signing in through the Tailscale app, and that is the simplest way to add this Mac too (the Mac app or `tailscale up`). An auth key (`tskey-auth-...`, from admin console → **Settings** → **Keys** → **Generate auth key**) is only needed to join a machine without signing in, for example a headless or scripted setup. Nothing in `podcast-digest/podcast` reads it.
+
+If you keep one for this project, put it in the keychain, not a file:
+
+```sh
+security add-generic-password -s podcast-digest-tailscale -a authkey -w
+tailscale up --authkey "$(security find-generic-password -s podcast-digest-tailscale -a authkey -w)"
+```
+
+Or set `TS_AUTHKEY` in `.env` (gitignored). Auth keys expire (90 days at most) unless you make a reusable key; a device that has joined stays joined after its key expires.
+
+### The home feed server over Tailscale (optional)
+
+With the Mac on the tailnet too, the phone can reach the local feed server (`feed_server.py`) when away from home, through the Mac's tailnet name or `100.x` address. This needs the Mac awake, and the server binds only to `audio.host` in `settings.json` (the home IP), so it would have to bind to the Mac's Tailscale address as well. Not set up: the R2 feed covers this without the Mac awake.
 
 ## Storage limits (stay on the free tier)
 
@@ -166,7 +193,9 @@ IP=$(curl -s -H "accept: application/dns-json" "https://cloudflare-dns.com/dns-q
 curl -s --resolve pub-<id>.r2.dev:443:$IP -o /dev/null -w "%{http_code}\n" https://pub-<id>.r2.dev/<prefix>/all/feed.xml
 ```
 
-Fix: the 1.1.1.1 app on the phone (Option A), or a custom domain (Option B).
+Fix: Tailscale on the phone with the tailnet's DNS override on (see "Tailscale on the phone"), or a custom domain (Option B).
+
+On the phone, if the feed fails with Tailscale on: check the Tailscale app shows **Connected**, and that **Use Tailscale DNS** is on in its settings.
 
 ## Troubleshooting
 

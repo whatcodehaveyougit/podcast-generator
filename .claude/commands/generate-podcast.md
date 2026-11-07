@@ -31,6 +31,23 @@ The sources file was given as: `$ARGUMENTS`
 - Never use `sources/_template.md` itself as a sources file.
 - Read the chosen file in full.
 
+## Running from another project
+
+I often run `/generate-podcast` from inside another project (a client site, the WordPress repo, and so on), not from this one. ROOT means this podcast-tool folder; the **calling project** is the git root of the folder I ran it from (or that folder, if it is not in git). This section only applies when the calling project is not ROOT, and it replaces "Choose the sources file" above.
+
+- **One podcast per calling project.** Its name is the calling project's folder name in lower-case kebab-case (for example `wordpress`), and its sources file is `ROOT/sources/<name>.md`. Sources files always live in ROOT, never in the calling project. On first use, tell me the name and let me change it.
+- **What the arguments mean:**
+  - Empty: use the calling project's podcast, and take the topic from our conversation in this session.
+  - A path to a file that exists, relative to the folder I ran from (or absolute): that file is material for this run. It is not a sources file.
+  - A bare name or a `sources/…` path that matches a file in `ROOT/sources/`: use that podcast, as in "Choose the sources file".
+- **No sources file for this project yet:** copy `ROOT/sources/_template.md` to `ROOT/sources/<name>.md` and draft every section yourself from the material, our conversation and the calling project (its README or CLAUDE.md). Do not interview me section by section: show me the whole draft and go on once I say yes. Set the look-back to today unless the material needs earlier items.
+- **The sources file already exists (a new topic):** add the material as new rows and update "The question I am trying to answer right now", and the "What I want to learn" bullets if the topic needs different categories. Then the usual compare step applies: show me the difference, and on my yes update the config and profile, keeping the old profile as `profile.<date>.md`. Keep the earlier rows: a file source that has not changed is never screened again, so old topics do not come back.
+- **Material:**
+  - A file in the calling project becomes a row of type **File**, with its full absolute path. Leave the file where it is.
+  - Web pages and feeds become rows the usual way.
+  - If the topic only exists in our conversation, write it up as a briefing at `ROOT/podcast-digest/podcasts/<name>/briefings/<date>-<topic>.md` (gitignored, since it may hold client details) and add that as a File row.
+- **Never write into the calling project.** Every file the tool makes goes under ROOT.
+
 ## Set up a podcast from its sources file
 
 The sources file is the source of truth for a podcast. Never ask me for anything it already holds.

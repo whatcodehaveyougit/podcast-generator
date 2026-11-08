@@ -1187,25 +1187,49 @@ def feed_items(name, cfg, eps, audio, guid_prefix=""):
     return out
 
 
-def feed_xml(title, link, items):
+SHOW_TITLE = "Sigurd's DeVeoCast"  # the combined feed, the one the phone follows
+SHOW_AUTHOR = "Sigurd Watt"
+ARTWORK_SVG = ROOT / "artwork.svg"  # cover art source; rendered to public/all/artwork.png (3000 px, Apple's maximum)
+
+
+def artwork_url(audio):
+    """Render the cover art if the SVG is newer than the PNG. Returns its feed URL, or "" if it cannot be made."""
+    png = ROOT / "public" / ALL_FEED / "artwork.png"
+    if ARTWORK_SVG.exists() and (not png.exists() or png.stat().st_mtime < ARTWORK_SVG.stat().st_mtime):
+        png.parent.mkdir(parents=True, exist_ok=True)
+        r = subprocess.run(["rsvg-convert", "-w", "3000", "-h", "3000", "-b", "#F3EEE3", str(ARTWORK_SVG), "-o", str(png)],
+                           capture_output=True, text=True)
+        if r.returncode != 0:
+            log(None, "Cover art not rendered (needs rsvg-convert: brew install librsvg): %s" % r.stderr.strip())
+    return "%s/%s/artwork.png" % (feed_base(audio), ALL_FEED) if png.exists() else ""
+
+
+def feed_xml(title, link, items, image="", description=None):
+    art = ""
+    if image:
+        art = """    <image><url>{i}</url><title>{t}</title><link>{l}</link></image>
+    <itunes:image href="{i}"/>
+""".format(i=image, t=html.escape(title), l=link)
     return """<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
   <channel>
     <title>{title}</title>
     <link>{link}</link>
-    <description>Private digest: {title}</description>
+    <description>{desc}</description>
     <language>en-gb</language>
-    <itunes:author>podcast-digest</itunes:author>
-    <itunes:block>Yes</itunes:block>
+    <itunes:author>{author}</itunes:author>
+{art}    <itunes:block>Yes</itunes:block>
 {items}
   </channel>
 </rss>
-""".format(title=html.escape(title), link=link, items="\n".join(items))
+""".format(title=html.escape(title), link=link, desc=html.escape(description or "Private digest: " + title),
+           author=html.escape(SHOW_AUTHOR), art=art, items="\n".join(items))
 
 
 def write_feed(name, cfg, pub, eps, audio):
     items = [x for _, x in feed_items(name, cfg, eps, audio)]
-    (pub / "feed.xml").write_text(feed_xml(cfg["title"], "%s/%s/feed.xml" % (feed_base(audio), name), items))
+    (pub / "feed.xml").write_text(feed_xml(cfg["title"], "%s/%s/feed.xml" % (feed_base(audio), name), items,
+                                           image=artwork_url(audio)))
     write_all_feed(audio)
     cloud_sync(audio)
 
@@ -1223,7 +1247,8 @@ def write_all_feed(audio):
     pub = ROOT / "public" / ALL_FEED
     pub.mkdir(parents=True, exist_ok=True)
     link = "%s/%s/feed.xml" % (feed_base(audio), ALL_FEED)
-    (pub / "feed.xml").write_text(feed_xml("All podcasts (podcast-digest)", link, [x for _, x in items]))
+    (pub / "feed.xml").write_text(feed_xml(SHOW_TITLE, link, [x for _, x in items], image=artwork_url(audio),
+                                           description="Sigurd's private digests, every podcast in one feed."))
 
 
 # ---------- cloud copy of the feeds (Cloudflare R2, S3 API) ----------
@@ -1285,7 +1310,7 @@ def s3_request(c, method, key, body_path=None, query=None):
     amz, day = t.strftime("%Y%m%dT%H%M%SZ"), t.strftime("%Y%m%d")
     headers = {"host": host, "x-amz-content-sha256": "UNSIGNED-PAYLOAD", "x-amz-date": amz}
     if body_path:
-        headers["content-type"] = {".mp3": "audio/mpeg", ".xml": "application/rss+xml; charset=utf-8"}.get(
+        headers["content-type"] = {".mp3": "audio/mpeg", ".png": "image/png", ".xml": "application/rss+xml; charset=utf-8"}.get(
             Path(body_path).suffix, "application/octet-stream")
     signed = ";".join(sorted(headers))
     canon = "\n".join([method, path, q, "".join("%s:%s\n" % (k, headers[k]) for k in sorted(headers)),
@@ -1365,7 +1390,7 @@ def rewrite_feeds(audio):
             cfg = json.loads(cfg_path.read_text())
             items = [x for _, x in feed_items(name, cfg, eps, audio)]
             (ROOT / "public" / name / "feed.xml").write_text(
-                feed_xml(cfg["title"], "%s/%s/feed.xml" % (feed_base(audio), name), items))
+                feed_xml(cfg["title"], "%s/%s/feed.xml" % (feed_base(audio), name), items, image=artwork_url(audio)))
     write_all_feed(audio)
 
 
@@ -1397,7 +1422,7 @@ def cloud_sync(audio, force=False):
     state = json.loads(state_path.read_text()) if state_path.exists() else {}
     pub = ROOT / "public"
     present = {}
-    for f in list(pub.glob("*/feed.xml")) + list(pub.glob("*/episodes/*.mp3")):
+    for f in list(pub.glob("*/feed.xml")) + list(pub.glob("*/artwork.png")) + list(pub.glob("*/episodes/*.mp3")):
         rel = f.relative_to(pub).as_posix()
         present[rel] = "%d-%d" % (f.stat().st_size, int(f.stat().st_mtime))
     try:

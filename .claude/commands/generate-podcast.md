@@ -35,17 +35,19 @@ The sources file was given as: `$ARGUMENTS`
 
 I often run `/generate-podcast` from inside another project (a client site, the WordPress repo, and so on), not from this one. ROOT means this podcast-tool folder; the **calling project** is the git root of the folder I ran it from (or that folder, if it is not in git). This section only applies when the calling project is not ROOT, and it replaces "Choose the sources file" above.
 
-- **One podcast per calling project.** Its name is the calling project's folder name in lower-case kebab-case (for example `wordpress`), and its sources file is `ROOT/sources/<name>.md`. Sources files always live in ROOT, never in the calling project. On first use, tell me the name and let me change it.
+- **One podcast per calling project.** Its name is the calling project's folder name in lower-case kebab-case (for example `wordpress`). On first use, tell me the name and let me change it.
+- **One sources file per episode.** Each episode gets its own sources file at `ROOT/sources/<name>/<date>-<topic>.md`, kept for good as the record of how that episode was made. Never edit or overwrite an earlier episode's sources file. The podcast's `config.json` (`sources_file`) and `profile.md` point at the current episode's file. Sources files always live in ROOT, never in the calling project.
 - **What the arguments mean:**
-  - Empty: use the calling project's podcast, and take the topic from our conversation in this session.
+  - Empty: use the calling project's podcast, and take the topic from what I am asking about right now: usually my latest question and your answer to it, not everything we have discussed in this session. If it is unclear which subject I mean, ask me in one line before writing anything.
   - A path to a file that exists, relative to the folder I ran from (or absolute): that file is material for this run. It is not a sources file.
-  - A bare name or a `sources/…` path that matches a file in `ROOT/sources/`: use that podcast, as in "Choose the sources file".
-- **No sources file for this project yet:** copy `ROOT/sources/_template.md` to `ROOT/sources/<name>.md` and draft every section yourself from the material, our conversation and the calling project (its README or CLAUDE.md). Do not interview me section by section: show me the whole draft and go on once I say yes. Set the look-back to today unless the material needs earlier items.
-- **The sources file already exists (a new topic):** add the material as new rows and update "The question I am trying to answer right now", and the "What I want to learn" bullets if the topic needs different categories. Then the usual compare step applies: show me the difference, and on my yes update the config and profile, keeping the old profile as `profile.<date>.md`. Keep the earlier rows: a file source that has not changed is never screened again, so old topics do not come back.
+  - A bare name or a `sources/…` path that matches a file in `ROOT/sources/`: use that podcast, as in "Choose the sources file". A file inside `ROOT/sources/<name>/` re-runs that episode's sources file as it is.
+- **No sources file for this project yet:** copy `ROOT/sources/_template.md` to `ROOT/sources/<name>/<date>-<topic>.md` and draft every section yourself from the material, our conversation and the calling project (its README or CLAUDE.md). Do not interview me section by section: show me the whole draft and go on once I say yes. Set the look-back to today unless the material needs earlier items.
+- **One subject per episode.** Each run covers only the subject I am asking about now. Earlier episodes' topics, and other parts of this session, stay out of the material, the profile and the episode.
+- **The podcast already exists (a new topic):** make a new sources file for this episode at `ROOT/sources/<name>/<date>-<topic>.md`, starting from the latest one so the goal and look-back carry over, with only the new material in its Content table, and "The question I am trying to answer right now", "What I want to learn" and "What to ignore" written for this subject alone. Then the usual compare step applies against the podcast's current config: show me the difference, and on my yes update the config and profile, keeping the old profile as `profile.<date>.md`. Before running, check the podcast's `notes/` folder: if any note from an earlier topic is still `pending` or `FAILED`, tell me and leave it out of this episode (mark it `delivered`) unless I say otherwise.
 - **Material:**
   - A file in the calling project becomes a row of type **File**, with its full absolute path. Leave the file where it is.
   - Web pages and feeds become rows the usual way.
-  - If the topic only exists in our conversation, write it up as a briefing at `ROOT/podcast-digest/podcasts/<name>/briefings/<date>-<topic>.md` (gitignored, since it may hold client details) and add that as a File row.
+  - If the topic only exists in our conversation, write it up as a briefing at `ROOT/podcast-digest/podcasts/<name>/briefings/<date>-<topic>.md` (gitignored, since it may hold client details) and add that as a File row. The briefing holds only this subject. It goes deep, teaching how the thing works with worked examples, not just the conclusions.
 - **Never write into the calling project.** Every file the tool makes goes under ROOT.
 
 ## Set up a podcast from its sources file
@@ -56,6 +58,7 @@ The sources file is the source of truth for a podcast. Never ask me for anything
 - **YouTube channels:** if the table names a YouTube channel, do not download from YouTube: its terms do not allow downloading videos or audio with third-party tools. Instead, check whether the creator publishes the same show as an audio podcast (most popular channels do, on Apple Podcasts or Spotify with a public RSS feed) and use that feed. If there is none, tell me and leave the channel out.
 - **`profile.md`:** build it from the sections "Goal of this podcast", "What I want to learn", "The question I am trying to answer right now", "What counts as useful" and "What to ignore". Keep my question word for word. The screening reads `profile.md` every time, and it is how the digest gets tuned to me.
 - **`USER.md`** (project root, shared by every podcast): who I am, my mission, who I work for and what I want to learn. The script reads it on every call, drops template comments, blank fields and empty sections, and puts what is left before `profile.md` in the screening and digest prompts, and in the episode-script prompt as context on the listener (never as a source of facts). If it is missing or unfilled, everything runs without it. Never copy it into `profile.md`.
+- **`context_files`** (in `podcast-digest/settings.json`, gitignored): absolute paths to files about me that live in other repos, such as my mission statement in SigurdApp. The script reads them fresh on every call and puts them after `USER.md` and before `profile.md`. Missing files are skipped. Never copy their contents into this repo. `MISSION-STATEMENT.example.md` at the project root is the committed template for a mission statement.
 - **Categories:** one per bullet under "What I want to learn".
 - **Look back:** the date in the "Look back" section. The first run of a podcast screens CONTENT published since that date. If the section is missing or empty, use the last eight days.
 
@@ -176,6 +179,8 @@ Offer these one line each, and I choose:
 - **Ask the archive:** transcripts and notes are plain markdown, so I can ask Claude Code "what did my sources say about X?".
 
 ## Finish
+
+If audio is on, check that the new episode reached the cloud feed I listen to (`all/feed.xml` in the bucket) before finishing. If the run log says the cloud upload was skipped or failed, run `podcast-digest/podcast publish` and fetch the feed again to confirm the episode is listed. Never tell me an episode is in my show until it is.
 
 Tell me:
 

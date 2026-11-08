@@ -36,7 +36,11 @@ Other subcommands: `test`, `fetch`, `rescreen`, `preview`, `digest`, `voice`, `a
 
 ## About you: USER.md
 
-`USER.md` at the project root says who you are, your mission, who you work for and what you want to learn. Every podcast reads it: screening and the digest use it to judge what matters to you, and the episode script uses it to pick emphasis and examples. Template comments and blank fields are ignored, so you can fill it in a bit at a time. It is gitignored.
+`USER.md` at the project root says who you are, your mission, who you work for and what you want to learn. Every podcast reads it: screening and the digest use it to judge what matters to you, and the episode script uses it to pick emphasis and examples. Template comments and blank fields are ignored, so you can fill it in a bit at a time. It is gitignored: copy `USER.example.md` to `USER.md` to start.
+
+## Files about you that live elsewhere: context_files
+
+Some context about you, such as a mission statement, may already live in another repo. List those files' absolute paths under `context_files` in `podcast-digest/settings.json` (gitignored). Every prompt reads them fresh, after `USER.md` and before the podcast's profile. `MISSION-STATEMENT.example.md` shows the shape of a mission statement.
 
 ## Making a new podcast
 
@@ -65,6 +69,7 @@ Each sources file is its own podcast, with its own folder under `podcast-digest/
 | `.claude/commands/generate-podcast.md` | The command: the full build specification and safety rules |
 | `podcast-digest/podcast` | The script (Python 3, standard library only) |
 | `sources/_template.md` | Template for a new sources file |
+| `MISSION-STATEMENT.example.md` | Template for a mission statement listed in `context_files` |
 | `NOTES.md` | Parked ideas: scheduling, and iCloud or Google Drive storage |
 
 Git holds the framework only. Your sources files and everything a run creates are gitignored: settings, profiles, notes, transcripts, digests, scripts and mp3 episodes.

@@ -17,3 +17,9 @@ podcast-digest/*
 
 # Local settings and any keys. Copy .env.example to .env.
 .env
+
+# SigurdOS workspace folders: local prep and scratch space, never committed.
+Docs/
+Tasks/
+Meetings/
+Agendas/

@@ -454,9 +454,20 @@ def user_context():
     return "# About me (from USER.md)\n\n" + "\n\n".join(kept)
 
 
+def context_files():
+    """Extra files about me that live outside this repo, listed in settings.json `context_files`.
+    Read fresh on every call, so edits to them flow straight in. Missing files are skipped."""
+    parts = []
+    for f in SETTINGS.get("context_files", []):
+        path = Path(f).expanduser()
+        if path.exists():
+            parts.append("# From %s\n\n%s" % (path.name, path.read_text().strip()))
+    return "\n\n".join(parts)
+
+
 def profile_text(pod):
-    """What every prompt knows about me: USER.md first, then this podcast's profile."""
-    parts = [user_context(), (pod / "profile.md").read_text().strip()]
+    """What every prompt knows about me: USER.md, then context_files, then this podcast's profile."""
+    parts = [user_context(), context_files(), (pod / "profile.md").read_text().strip()]
     return "\n\n".join(p for p in parts if p)
 
 

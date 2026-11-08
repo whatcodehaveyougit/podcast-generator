@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="3000" height="3000">
+  <!-- Sigurd's DeVeoCast cover art: Mackintosh-style lattice and rose, flat primary colours.
+       Render: rsvg-convert -w 3000 -h 3000 artwork.svg -o public/all/artwork.png -->
+  <rect width="1000" height="1000" fill="#F3EEE3"/>
+  <rect x="40" y="40" width="920" height="920" fill="none" stroke="#111" stroke-width="10"/>
+
+  <!-- tall Mackintosh verticals, left and right -->
+  <g stroke="#111" stroke-width="6">
+    <line x1="110" y1="40" x2="110" y2="960"/><line x1="135" y1="40" x2="135" y2="960"/><line x1="160" y1="40" x2="160" y2="960"/>
+    <line x1="840" y1="40" x2="840" y2="960"/><line x1="865" y1="40" x2="865" y2="960"/><line x1="890" y1="40" x2="890" y2="960"/>
+  </g>
+
+  <!-- 3x3 square lattices at the top of each column group -->
+  <g fill="#111">
+    <rect x="98" y="90" width="24" height="24"/><rect x="123" y="90" width="24" height="24" fill="#1F4FBF"/><rect x="148" y="90" width="24" height="24"/>
+    <rect x="98" y="115" width="24" height="24" fill="#1F4FBF"/><rect x="123" y="115" width="24" height="24"/><rect x="148" y="115" width="24" height="24" fill="#1F4FBF"/>
+    <rect x="98" y="140" width="24" height="24"/><rect x="123" y="140" width="24" height="24" fill="#1F4FBF"/><rect x="148" y="140" width="24" height="24"/>
+    <rect x="828" y="836" width="24" height="24"/><rect x="853" y="836" width="24" height="24" fill="#F2C12E"/><rect x="878" y="836" width="24" height="24"/>
+    <rect x="828" y="861" width="24" height="24" fill="#F2C12E"/><rect x="853" y="861" width="24" height="24"/><rect x="878" y="861" width="24" height="24" fill="#F2C12E"/>
+    <rect x="828" y="886" width="24" height="24"/><rect x="853" y="886" width="24" height="24" fill="#F2C12E"/><rect x="878" y="886" width="24" height="24"/>
+  </g>
+
+  <!-- stem and leaves -->
+  <line x1="500" y1="490" x2="500" y2="650" stroke="#111" stroke-width="10"/>
+  <path d="M500 590 C 440 575, 405 545, 390 505 C 445 515, 485 550, 500 590 Z" fill="#1F4FBF" stroke="#111" stroke-width="6"/>
+  <path d="M500 620 C 560 605, 595 575, 610 535 C 555 545, 515 580, 500 620 Z" fill="#F2C12E" stroke="#111" stroke-width="6"/>
+
+  <!-- the rose: red disc with spiralling petal lines -->
+  <circle cx="500" cy="330" r="160" fill="#D7261E" stroke="#111" stroke-width="10"/>
+  <g fill="none" stroke="#111" stroke-width="7" stroke-linecap="round">
+    <path d="M500 190 C 610 200, 650 300, 610 380"/>
+    <path d="M390 380 C 350 290, 400 215, 480 215"/>
+    <path d="M500 250 C 570 255, 590 320, 560 370"/>
+    <path d="M440 365 C 415 315, 435 270, 490 268"/>
+    <path d="M500 300 C 530 302, 540 330, 525 350"/>
+    <path d="M475 345 C 465 325, 475 310, 495 308"/>
+    <path d="M380 420 C 440 480, 560 480, 620 420"/>
+  </g>
+
+  <!-- lettering -->
+  <text x="500" y="735" text-anchor="middle" font-family="Avenir Next Condensed" font-weight="500"
+        font-size="46" letter-spacing="22" fill="#111">SIGURD'S</text>
+  <text x="500" y="850" text-anchor="middle" font-family="Avenir Next Condensed" font-weight="700"
+        font-size="104" letter-spacing="2" fill="#111">DeVeo<tspan fill="#D7261E">Cast</tspan></text>
+  <rect x="300" y="880" width="400" height="10" fill="#1F4FBF"/>
+</svg>

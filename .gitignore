@@ -4,6 +4,8 @@
 # Personal sources files (CONTENT, goals, current questions). Keep only the template.
 sources/*
 !sources/_template.md
+!sources/_mission-statement.example.md
+!sources/_resources.example.md
 
 # Who I am: personal, shared by every podcast.
 USER.md

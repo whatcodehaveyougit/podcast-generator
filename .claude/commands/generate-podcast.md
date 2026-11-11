@@ -21,14 +21,17 @@ Every time I run `/generate-podcast`:
 4. **Produce the digest:** run `podcast-digest/podcast run <name>`. This fetches new CONTENT, screens it, writes the digest and, if audio is on, voices it and adds it to the feed.
 5. **Finish** (below).
 
-Scheduling is out of scope for now: I will set that up separately, and it will call the same `run` command. See `NOTES.md` for the original scheduling design.
+Scheduling: a podcast can run on a weekday schedule through launchd, calling the same `run` command. The template is `launchd/podcast-run.example.plist`; see "Scheduled podcasts" in the README. Only set one up when I ask for it.
 
 ## Choose the sources file
 
 The sources file was given as: `$ARGUMENTS`
 
 - If that is empty, list the `.md` files in `sources/` in this project, skipping `_template.md`, and ask me which one to use, with AskUserQuestion. Offer "Make a new one" as an option. If I pick that, copy `sources/_template.md` to `sources/<short-name>.md` and fill it in with me before going on.
-- Never use `sources/_template.md` itself as a sources file.
+- Never use `sources/_template.md`, or any other `sources/_*.md` template, as a sources file.
+- **A podcast kept as a folder** (`sources/<name>/podcast.md`, for a standing podcast such as a daily news show) is the podcast `<name>`. The folder can also hold:
+  - `mission-statement.md` (template: `sources/_mission-statement.example.md`): list it under `context_files` in the podcast's `config.json` (path relative to ROOT). The script feeds it into every prompt. Never copy it into `profile.md`.
+  - `resources.md` (template: `sources/_resources.example.md`): when the sources file's `## Content` section says "See resources.md", read the Content table from there.
 - Read the chosen file in full.
 
 ## Running from another project
@@ -59,6 +62,7 @@ The sources file is the source of truth for a podcast. Never ask me for anything
 - **`profile.md`:** build it from the sections "Goal of this podcast", "What I want to learn", "The question I am trying to answer right now", "What counts as useful" and "What to ignore". Keep my question word for word. The screening reads `profile.md` every time, and it is how the digest gets tuned to me.
 - **`USER.md`** (project root, shared by every podcast): who I am, my mission, who I work for and what I want to learn. The script reads it on every call, drops template comments, blank fields and empty sections, and puts what is left before `profile.md` in the screening and digest prompts, and in the episode-script prompt as context on the listener (never as a source of facts). If it is missing or unfilled, everything runs without it. Never copy it into `profile.md`.
 - **`context_files`** (in `podcast-digest/settings.json`, gitignored): absolute paths to files about me that live in other repos, such as my mission statement in SigurdApp. The script reads them fresh on every call and puts them after `USER.md` and before `profile.md`. Missing files are skipped. Never copy their contents into this repo. `MISSION-STATEMENT.example.md` at the project root is the committed template for a mission statement.
+- **Per-podcast `context_files`** (in the podcast's `config.json`): the same, for one podcast only, such as its own mission statement. Paths may be relative to ROOT. They go after the shared `context_files` and before `profile.md`.
 - **Categories:** one per bullet under "What I want to learn".
 - **Look back:** the date in the "Look back" section. The first run of a podcast screens CONTENT published since that date. If the section is missing or empty, use the last eight days.
 
@@ -84,7 +88,7 @@ Version 1 delivers to a folder. Telegram, email or other channels can be added a
     podcast                 the one script
     settings.json           Claude plan, model, audio settings (no secrets)
     podcasts/<name>/
-      config.json           CONTENT list, look-back date, per-run cap
+      config.json           CONTENT list, look-back date, per-run cap, max_minutes, context_files
       profile.md            built from the sources file
       notes/                one note per item, pending until delivered
       transcripts/          kept beside their notes

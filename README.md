@@ -4,7 +4,7 @@ A Claude Code command that turns the sources you follow into a short research di
 
 You give it a sources file: what you want to learn, the question you are trying to answer, and the CONTENT to follow. CONTENT can be written (blogs, documentation updates, status feeds) or podcast (audio episodes). It fetches anything new, has Claude screen each item against your goals, writes a digest, and voices it as a conversation between two hosts.
 
-Everything runs on your Mac and on demand. There is no scheduler yet.
+Everything runs on your Mac: on demand, or on a weekday schedule (see Scheduled podcasts).
 
 ## How it works
 
@@ -42,6 +42,21 @@ Other subcommands: `test`, `fetch`, `rescreen`, `preview`, `digest`, `voice`, `a
 
 Some context about you, such as a mission statement, may already live in another repo. List those files' absolute paths under `context_files` in `podcast-digest/settings.json` (gitignored). Every prompt reads them fresh, after `USER.md` and before the podcast's profile. `MISSION-STATEMENT.example.md` shows the shape of a mission statement.
 
+## A podcast's own mission statement and resources list
+
+A standing podcast (a daily news show, say) can live in a folder, `sources/<name>/`, with `podcast.md` as its sources file and two more files beside it:
+
+- `mission-statement.md`: why this podcast exists and what it should keep you on top of. Listed under `context_files` in `podcast-digest/podcasts/<name>/config.json`, it goes into every prompt for that podcast. Template: `sources/_mission-statement.example.md`.
+- `resources.md`: everyone the podcast listens to, the sources left out and why, and ones to add later. `podcast.md` says "See resources.md" under Content. Template: `sources/_resources.example.md`.
+
+Both stay local, like every sources file.
+
+## Scheduled podcasts
+
+A podcast can run itself Monday to Friday at 06:00 through a launchd agent that calls `podcast run <name>`. Copy `launchd/podcast-run.example.plist`, replace `NAME` and `ROOT`, save it in `~/Library/LaunchAgents/` and load it with `launchctl bootstrap gui/$(id -u) <plist>`. Output goes to `podcast-digest/logs/run-<name>.log`.
+
+The Mac must be awake: a run missed while asleep happens as soon as it wakes. `sudo pmset repeat wakeorpoweron MTWRF 05:55:00` wakes it first, and `caffeinate -i` in the plist keeps it awake until the run ends. A closed laptop on battery will not wake.
+
 ## Making a new podcast
 
 1. Copy `sources/_template.md` to `sources/<short-name>.md`.
@@ -69,8 +84,11 @@ Each sources file is its own podcast, with its own folder under `podcast-digest/
 | `.claude/commands/generate-podcast.md` | The command: the full build specification and safety rules |
 | `podcast-digest/podcast` | The script (Python 3, standard library only) |
 | `sources/_template.md` | Template for a new sources file |
+| `sources/_mission-statement.example.md` | Template for a podcast's own mission statement |
+| `sources/_resources.example.md` | Template for a podcast's resources list |
+| `launchd/podcast-run.example.plist` | Template for a weekday schedule |
 | `MISSION-STATEMENT.example.md` | Template for a mission statement listed in `context_files` |
-| `NOTES.md` | Parked ideas: scheduling, and iCloud or Google Drive storage |
+| `NOTES.md` | Parked ideas: the original scheduling design, and iCloud or Google Drive storage |
 
 Git holds the framework only. Your sources files and everything a run creates are gitignored: settings, profiles, notes, transcripts, digests, scripts and mp3 episodes.
 

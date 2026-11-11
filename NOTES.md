@@ -16,6 +16,8 @@ For now everything lives in `podcast-digest/` inside this project, which is giti
 
 ## Scheduling (launchd)
 
+A simple weekday schedule now exists (`launchd/podcast-run.example.plist`, see the README). What follows is the original, fuller design, not built.
+
 Andrew's original design ran unattended every night. When we add scheduling, it called the same script:
 
 - Use a launchd agent. The script's `loop` command is a long-running process: it checks every 10 minutes (`sleep 600`), transcribes between 01:00 and 06:00, runs the login check once a day after 06:00, and delivers on digest days. `KeepAlive` in the plist restarts that loop only if it exits. Guard against two copies with a lock file. `ProgramArguments` is the absolute path to the same script.

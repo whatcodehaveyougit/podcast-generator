@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-Runs `podcast run <NAME>` Monday to Friday at 06:00. Template: replace NAME and ROOT
+Runs `podcast run <NAME>` Monday to Friday at 21:00, covering that day's news. Template: replace NAME and ROOT
 (the absolute path to this project), save as
 ~/Library/LaunchAgents/local.podcast-digest.run.NAME.plist and load it with
 
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.podcast-digest.run.NAME.plist
 
-If the Mac is asleep at 06:00, launchd runs the job as soon as it wakes. To have it wake
-itself first: sudo pmset repeat wakeorpoweron MTWRF 05:55:00
+If the Mac is asleep or off at 21:00, launchd runs the job as soon as it wakes. To have it wake
+itself first: sudo pmset repeat wakeorpoweron MTWRF 20:55:00
 caffeinate -i keeps it from idle-sleeping until the run finishes.
 -->
 <plist version="1.0">
@@ -28,11 +28,11 @@ caffeinate -i keeps it from idle-sleeping until the run finishes.
 	<string>ROOT</string>
 	<key>StartCalendarInterval</key>
 	<array>
-		<dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>6</integer><key>Minute</key><integer>0</integer></dict>
-		<dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>6</integer><key>Minute</key><integer>0</integer></dict>
-		<dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>6</integer><key>Minute</key><integer>0</integer></dict>
-		<dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>6</integer><key>Minute</key><integer>0</integer></dict>
-		<dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>6</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
 	</array>
 	<key>StandardOutPath</key>
 	<string>ROOT/podcast-digest/logs/run-NAME.log</string>

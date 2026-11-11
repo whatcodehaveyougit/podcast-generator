@@ -26,11 +26,12 @@ against it. These comments are dropped. Your real one stays local (sources/ is g
 ## What "on top of it" means
 
 <!-- What you want to be able to do after each episode. Examples:
-     - Know the same morning when Google confirms an update or changes a policy.
+     - Know the same day when Google confirms an update or changes a policy.
      - Know what changed in Google Ads before it shows up in the account.
-     - Know which stories need a closer look today, and which can wait. -->
+     - Know which stories need a closer look, and which can wait. -->
 
 ## When and how I listen
 
-<!-- Example: Monday to Friday, 5 to 10 minutes, over breakfast. The most important
-     story first; finish with what, if anything, to look into today. -->
+<!-- Example: Monday to Friday, 5 to 10 minutes, made at 9pm from that day's news,
+     heard that evening or over breakfast. The most
+     important story first; finish with what, if anything, to look into next. -->

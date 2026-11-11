@@ -21,7 +21,7 @@ Every time I run `/generate-podcast`:
 4. **Produce the digest:** run `podcast-digest/podcast run <name>`. This fetches new CONTENT, screens it, writes the digest and, if audio is on, voices it and adds it to the feed.
 5. **Finish** (below).
 
-Scheduling: a podcast can run on a weekday schedule through launchd, calling the same `run` command. The template is `launchd/podcast-run.example.plist`; see "Scheduled podcasts" in the README. Only set one up when I ask for it.
+Scheduling: a podcast can run on a weekday schedule (default 21:00) through launchd, calling the same `run` command. The template is `launchd/podcast-run.example.plist`; see "Scheduled podcasts" in the README. Only set one up when I ask for it.
 
 ## Choose the sources file
 

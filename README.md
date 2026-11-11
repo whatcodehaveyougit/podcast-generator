@@ -53,9 +53,9 @@ Both stay local, like every sources file.
 
 ## Scheduled podcasts
 
-A podcast can run itself Monday to Friday at 06:00 through a launchd agent that calls `podcast run <name>`. Copy `launchd/podcast-run.example.plist`, replace `NAME` and `ROOT`, save it in `~/Library/LaunchAgents/` and load it with `launchctl bootstrap gui/$(id -u) <plist>`. Output goes to `podcast-digest/logs/run-<name>.log`.
+A podcast can run itself Monday to Friday at 21:00 through a launchd agent that calls `podcast run <name>`. Copy `launchd/podcast-run.example.plist`, replace `NAME` and `ROOT`, save it in `~/Library/LaunchAgents/` and load it with `launchctl bootstrap gui/$(id -u) <plist>`. Output goes to `podcast-digest/logs/run-<name>.log`.
 
-The Mac must be awake: a run missed while asleep happens as soon as it wakes. `sudo pmset repeat wakeorpoweron MTWRF 05:55:00` wakes it first, and `caffeinate -i` in the plist keeps it awake until the run ends. A closed laptop on battery will not wake.
+The Mac must be awake: a run missed while asleep happens as soon as it wakes. `sudo pmset repeat wakeorpoweron MTWRF 20:55:00` wakes it first, and `caffeinate -i` in the plist keeps it awake until the run ends. A closed laptop on battery will not wake.
 
 ## Making a new podcast
 

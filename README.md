@@ -106,7 +106,7 @@ podcast-digest/
   public/<name>/episodes/<date>.mp3
 ```
 
-Episodes reach the phone through a private podcast feed in a Cloudflare R2 bucket, so the Mac does not need to be awake for listening. The phone uses Tailscale as its VPN, with the tailnet's DNS set to get around the ISP's block on r2.dev. Setup, and why it is built this way: [setup-podcasts-feed.md](setup-podcasts-feed.md).
+Episodes reach the phone through a private podcast feed on echo-dash, an always-on server in your Tailscale network, so the Mac does not need to be awake for listening. Only devices signed in to the tailnet can fetch it. Setup, and why it is built this way: [setup-podcasts-feed.md](setup-podcasts-feed.md).
 
 ## Safety
 

@@ -11,8 +11,7 @@ Usage: podcast <command> [<name>] [args]
   run <name>              canary, then fetch, then digest
   canary                  check that `claude -p` still answers
   audio <name>            add any files in incoming-audio/<name>/ to the feed now
-  publish                 upload every feed and episode to the cloud bucket now (if one is set up)
-  storage                 show how full the cloud bucket is (prunes above 8 GB, hard stop at 9 GB)
+  publish                 copy every feed and episode to the tailnet server now (if one is set up)
   voice <name> [minutes]  voice the latest saved digest and add it to the feed
                           (minutes overrides the length cap, default 20, for this one episode)
 
@@ -22,7 +21,6 @@ import collections
 import datetime as dt
 import email.utils
 import hashlib
-import hmac
 import html
 import json
 import os
@@ -31,7 +29,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -1268,210 +1265,49 @@ def write_all_feed(audio):
                                            description="Sigurd's private digests, every podcast in one feed."))
 
 
-# ---------- cloud copy of the feeds (Cloudflare R2, S3 API) ----------
-# settings.json audio.cloud: endpoint, bucket, public_base, prefix. Keys live in the macOS keychain
-# (service podcast-digest-r2, accounts access_key_id and secret_access_key), never in a file.
-# Everything is uploaded under a long random prefix, so the feed URL is unguessable but not secret.
-
-R2_KEYCHAIN = "podcast-digest-r2"
-
-
-def load_env():
-    """.env in the project root (KEY=VALUE lines) into the environment, without overriding real env vars."""
-    f = ROOT.parent / ".env"
-    if f.exists():
-        for line in f.read_text().splitlines():
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, v = line.split("=", 1)
-                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
-
+# ---------- copy of the feeds on the tailnet (echo-dash) ----------
+# settings.json audio.cloud: target (the rsync destination) and public_base (the HTTPS address that
+# `tailscale serve` gives that folder). It is tailnet-only, so only your own devices can fetch the feeds.
 
 def cloud_cfg(audio):
-    """Bucket settings: .env / environment (R2_*) first, then settings.json audio.cloud."""
-    load_env()
-    c = dict(audio.get("cloud") or {})
-    for key, env in (("endpoint", "R2_ENDPOINT"), ("bucket", "R2_BUCKET"), ("public_base", "R2_PUBLIC_BASE"),
-                     ("prefix", "R2_PREFIX")):
-        if os.environ.get(env):
-            c[key] = os.environ[env]
-    if c.get("endpoint"):  # accept the endpoint pasted with the bucket name on the end
-        c["endpoint"] = re.sub(r"/+(%s)?/*$" % re.escape(c.get("bucket", "")), "", c["endpoint"].strip())
-    return c
+    return dict(audio.get("cloud") or {})
 
 
 def feed_base(audio):
     c = cloud_cfg(audio)
-    if c.get("public_base") and c.get("prefix") and c.get("endpoint"):  # only once uploads can work
-        return "%s/%s" % (c["public_base"].rstrip("/"), c["prefix"])
+    if c.get("public_base") and c.get("target"):  # only once the copy can work
+        return c["public_base"].rstrip("/")
     return "http://%s:%s" % (audio["host"], audio["port"])
 
 
-def keychain(service, account):
-    r = subprocess.run(["security", "find-generic-password", "-s", service, "-a", account, "-w"],
-                       capture_output=True, text=True)
-    return r.stdout.strip() if r.returncode == 0 else None
-
-
-def s3_request(c, method, key, body_path=None, query=None):
-    """One signed S3 request (AWS Signature V4, region auto). Returns (status, body bytes)."""
-    ak = os.environ.get("R2_ACCESS_KEY_ID") or keychain(R2_KEYCHAIN, "access_key_id")
-    sk = os.environ.get("R2_SECRET_ACCESS_KEY") or keychain(R2_KEYCHAIN, "secret_access_key")
-    if not ak or not sk:
-        raise RuntimeError("R2 keys are not in the keychain (service %s)" % R2_KEYCHAIN)
-    host = urllib.parse.urlparse(c["endpoint"]).netloc
-    path = "/%s/%s" % (c["bucket"], urllib.parse.quote(key)) if key else "/%s" % c["bucket"]
-    q = "&".join("%s=%s" % (urllib.parse.quote(k, safe="-_.~"), urllib.parse.quote(str(v), safe="-_.~"))
-                 for k, v in sorted((query or {}).items()))
-    t = now()
-    amz, day = t.strftime("%Y%m%dT%H%M%SZ"), t.strftime("%Y%m%d")
-    headers = {"host": host, "x-amz-content-sha256": "UNSIGNED-PAYLOAD", "x-amz-date": amz}
-    if body_path:
-        headers["content-type"] = {".mp3": "audio/mpeg", ".png": "image/png", ".xml": "application/rss+xml; charset=utf-8"}.get(
-            Path(body_path).suffix, "application/octet-stream")
-    signed = ";".join(sorted(headers))
-    canon = "\n".join([method, path, q, "".join("%s:%s\n" % (k, headers[k]) for k in sorted(headers)),
-                       signed, "UNSIGNED-PAYLOAD"])
-    scope = "%s/auto/s3/aws4_request" % day
-    to_sign = "\n".join(["AWS4-HMAC-SHA256", amz, scope, hashlib.sha256(canon.encode()).hexdigest()])
-    k = ("AWS4" + sk).encode()
-    for part in (day, "auto", "s3", "aws4_request"):
-        k = hmac.new(k, part.encode(), hashlib.sha256).digest()
-    sig = hmac.new(k, to_sign.encode(), hashlib.sha256).hexdigest()
-    headers["Authorization"] = "AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=%s, Signature=%s" % (ak, scope, signed, sig)
-    data = open(body_path, "rb") if body_path else None
-    if body_path:
-        headers["Content-Length"] = str(os.path.getsize(body_path))
-    req = urllib.request.Request("https://%s%s%s" % (host, path, "?" + q if q else ""), data=data, method=method,
-                                 headers={k2: v for k2, v in headers.items() if k2 != "host"})
-    try:
-        with urllib.request.urlopen(req, timeout=600) as r:
-            return r.status, r.read()
-    finally:
-        if data:
-            data.close()
-
-
-# R2's free tier is 10 GB. Keep well under it: prune old episodes above 8 GB, never upload past 9 GB.
-CLOUD_PRUNE_BYTES = 8 * 1000 ** 3
-CLOUD_HARD_BYTES = 9 * 1000 ** 3
-
-
-def bucket_sizes(c):
-    """{key: bytes} for every object in the whole bucket (not just our prefix), read from R2 itself."""
-    sizes, token = {}, None
-    while True:
-        q = {"list-type": "2", "max-keys": "1000"}
-        if token:
-            q["continuation-token"] = token
-        _, body = s3_request(c, "GET", "", query=q)
-        root = ET.fromstring(body)
-        ns = {"s": root.tag.split("}")[0].strip("{")} if root.tag.startswith("{") else {}
-        f = (lambda t: "s:" + t) if ns else (lambda t: t)
-        for o in root.findall(f("Contents"), ns):
-            sizes[o.findtext(f("Key"), namespaces=ns)] = int(o.findtext(f("Size"), namespaces=ns) or 0)
-        token = root.findtext(f("NextContinuationToken"), namespaces=ns)
-        if root.findtext(f("IsTruncated"), namespaces=ns) != "true" or not token:
-            return sizes
-
-
-def prune_episodes(c, remote):
-    """Retire the oldest episodes (any podcast) until the bucket would be under CLOUD_PRUNE_BYTES.
-    Retired mp3s move to podcast-digest/retired-audio/<name>/ (off the feeds, still on this Mac).
-    Returns the number retired."""
-    pub = ROOT / "public"
-    eps = sorted(pub.glob("*/episodes/*.mp3"), key=lambda f: f.stat().st_mtime)
-    prefix = c["prefix"] + "/"
-    local = {prefix + f.relative_to(pub).as_posix(): f.stat().st_size for f in eps}
-    # projected bucket size after this sync: everything in the bucket except our episodes, plus our local episodes
-    total = sum(v for k, v in remote.items() if not (k.startswith(prefix) and k.endswith(".mp3"))) + sum(local.values())
-    retired = 0
-    while total > CLOUD_PRUNE_BYTES and len(eps) > 1:  # always keep the newest episode
-        f = eps.pop(0)
-        name = f.parent.parent.name
-        dest = ROOT / "retired-audio" / name
-        dest.mkdir(parents=True, exist_ok=True)
-        total -= f.stat().st_size
-        shutil.move(str(f), str(dest / f.name))
-        retired += 1
-        log(None, "Storage: retired oldest episode %s/%s (bucket would be %.2f GB)" % (name, f.name, total / 1e9))
-    return retired
-
-
-def rewrite_feeds(audio):
-    """Rewrite every podcast's feed and the combined feed, without uploading."""
-    for cfg_path in sorted((ROOT / "podcasts").glob("*/config.json")):
-        name = cfg_path.parent.name
-        eps = ROOT / "public" / name / "episodes"
-        if eps.is_dir():
-            cfg = json.loads(cfg_path.read_text())
-            items = [x for _, x in feed_items(name, cfg, eps, audio)]
-            (ROOT / "public" / name / "feed.xml").write_text(
-                feed_xml(cfg["title"], "%s/%s/feed.xml" % (feed_base(audio), name), items, image=artwork_url(audio)))
-    write_all_feed(audio)
-
-
-def cmd_storage():
-    """Show how full the bucket is."""
-    c = cloud_cfg(SETTINGS.get("audio", {}))
-    if not c.get("endpoint"):
-        sys.exit("No cloud bucket set up.")
-    sizes = bucket_sizes(c)
-    total = sum(sizes.values())
-    print("Bucket %s: %.3f GB in %d files (prune above %.0f GB, hard stop %.0f GB, free tier 10 GB)" % (
-        c["bucket"], total / 1e9, len(sizes), CLOUD_PRUNE_BYTES / 1e9, CLOUD_HARD_BYTES / 1e9))
-
-
-def cloud_sync(audio, force=False):
-    """Upload changed feeds and episodes in public/ to the bucket, and remove episodes deleted here.
-    Keeps the bucket under the free tier: prunes the oldest episodes above 8 GB and never uploads past 9 GB."""
+def cloud_sync(audio):
+    """Mirror the feeds, artwork and episodes in public/ to the tailnet server, removing episodes deleted here.
+    --delay-updates swaps every changed file in at the end, so a feed never points at an episode not yet copied."""
     c = cloud_cfg(audio)
-    if not c.get("endpoint"):
+    if not c.get("target"):
         return
+    cmd = ["rsync", "-a", "--delete", "--delay-updates", "--prune-empty-dirs", "--chmod=u+rwX,go+rX,go-w", "--itemize-changes",
+           "--include=*/", "--include=feed.xml", "--include=artwork.png", "--include=*.mp3", "--exclude=*",
+           str(ROOT / "public") + "/", c["target"].rstrip("/") + "/"]
     try:
-        remote = bucket_sizes(c)
-    except Exception as e:  # without the real size, upload nothing: never risk going over
-        log(None, "Cloud upload skipped: could not read the bucket size (%s)" % e)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+    except Exception as e:
+        r = None
+        err = str(e)
+    if r is None or r.returncode != 0:  # the local feed is already written; the copy catches up next time
+        log(None, "Tailnet copy failed (will retry next run): %s" % (err if r is None else r.stderr.strip()))
         return
-    if prune_episodes(c, remote):
-        rewrite_feeds(audio)
-    state_path = ROOT / "logs" / "cloud-sync.json"
-    state = json.loads(state_path.read_text()) if state_path.exists() else {}
-    pub = ROOT / "public"
-    present = {}
-    for f in list(pub.glob("*/feed.xml")) + list(pub.glob("*/artwork.png")) + list(pub.glob("*/episodes/*.mp3")):
-        rel = f.relative_to(pub).as_posix()
-        present[rel] = "%d-%d" % (f.stat().st_size, int(f.stat().st_mtime))
-    try:
-        for rel, sig in sorted(present.items(), key=lambda p: p[0].endswith(".xml")):  # episodes before feeds
-            if force or state.get(rel) != sig:
-                key = "%s/%s" % (c["prefix"], rel)
-                size = (pub / rel).stat().st_size
-                after = sum(remote.values()) - remote.get(key, 0) + size
-                if after > CLOUD_HARD_BYTES:
-                    log(None, "STORAGE LIMIT: not uploading %s, the bucket would reach %.2f GB (hard stop %.0f GB)"
-                        % (rel, after / 1e9, CLOUD_HARD_BYTES / 1e9))
-                    continue
-                s3_request(c, "PUT", key, str(pub / rel))
-                remote[key] = size
-                state[rel] = sig
-                log(None, "Uploaded %s" % rel)
-        for rel in [r for r in state if r not in present]:
-            s3_request(c, "DELETE", "%s/%s" % (c["prefix"], rel))
-            remote.pop("%s/%s" % (c["prefix"], rel), None)
-            del state[rel]
-            log(None, "Removed from cloud: %s" % rel)
-    except Exception as e:  # the local feed is already written; the cloud copy catches up next time
-        log(None, "Cloud upload failed (will retry next run): %s" % e)
-    finally:
-        (ROOT / "logs").mkdir(exist_ok=True)
-        state_path.write_text(json.dumps(state, indent=2))
+    for line in r.stdout.splitlines():
+        if line.startswith("<f"):
+            log(None, "Copied %s" % line.split(" ", 1)[1])
+        elif line.startswith("*deleting"):
+            log(None, "Removed from tailnet: %s" % line.split(None, 1)[1])
 
 
 def cmd_publish():
     audio = SETTINGS.get("audio", {})
-    if not cloud_cfg(audio).get("endpoint"):
-        sys.exit("No cloud bucket in settings.json (audio.cloud).")
+    if not cloud_cfg(audio).get("target"):
+        sys.exit("No tailnet copy in settings.json (audio.cloud.target).")
     for cfg_path in sorted((ROOT / "podcasts").glob("*/config.json")):
         name = cfg_path.parent.name
         eps = ROOT / "public" / name / "episodes"
@@ -1494,7 +1330,7 @@ def main(argv):
     cmd, args = argv[1], argv[2:]
     table = {"canary": (cmd_canary, 0), "test": (cmd_test, 2), "fetch": (cmd_fetch, 1), "rescreen": (cmd_rescreen, 1),
              "preview": (cmd_preview, 1), "digest": (cmd_digest, 1), "run": (cmd_run, 1), "audio": (cmd_audio, 1),
-             "voice": (cmd_voice, (1, 2)), "publish": (cmd_publish, 0), "storage": (cmd_storage, 0)}
+             "voice": (cmd_voice, (1, 2)), "publish": (cmd_publish, 0)}
     want = table.get(cmd, (None, -1))[1]
     if cmd not in table or len(args) not in (want if isinstance(want, tuple) else (want,)):
         print(__doc__)

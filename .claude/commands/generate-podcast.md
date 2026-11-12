@@ -166,12 +166,12 @@ The aim is a NotebookLM-style two-host conversation that arrives in my podcast a
 
 ## The audio feed (only if I want the audio version)
 
-- Serve each podcast as its own private podcast feed from this Mac: `public/<name>/feed.xml` listing that podcast's mp3 files, plus its episodes folder. Serve only `podcast-digest/public/`, nothing else from the project.
-- Use a small local web server run by its own launchd agent, so the feed is there whenever my phone checks. Bind it to my home network or my private VPN address, never to the open internet, and never port-forward it on my router. Use Apple's own `/usr/bin/python3` for the server: the macOS firewall can silently block a Homebrew Python.
-- Test the feed URL from my phone's browser before going further.
-- Then walk me through subscribing on my phone, once per podcast. In AntennaPod (Android): Add podcast, then "Add podcast by RSS address", paste the URL. On iPhone: Apple Podcasts (Library, then Follow a Show by URL) or Overcast (Add URL).
-- Set the app to download new episodes automatically on Wi-Fi.
-- Tell me the feed only works while my phone can reach this Mac (home Wi-Fi, or the VPN switched on).
+- Serve each podcast as its own private podcast feed: `public/<name>/feed.xml` listing that podcast's mp3 files, plus its episodes folder, and `public/all/feed.xml` with every podcast. Only `podcast-digest/public/` is ever copied out, nothing else from the project.
+- The feeds live on an always-on server in my Tailscale network (echo-dash), never on the open internet or a public bucket: the episodes can include client data. `cloud_sync` copies `public/` there with rsync over Tailscale SSH (`audio.cloud.target` in `settings.json`), and `tailscale serve` shares that folder tailnet-only over HTTPS (`audio.cloud.public_base`). Setup and checks: `setup-podcasts-feed.md`.
+- Test the feed URL from my phone with Tailscale connected before going further.
+- Then walk me through subscribing on my phone to `all/feed.xml`. On iPhone: Apple Podcasts (Library, then Follow a Show by URL). In AntennaPod (Android): Add podcast, then "Add podcast by RSS address".
+- Set the app to download new episodes automatically, so they also play offline.
+- Tell me the feed only works while Tailscale is connected on my phone.
 
 ## Extras to offer after the first digest has arrived
 
@@ -184,7 +184,7 @@ Offer these one line each, and I choose:
 
 ## Finish
 
-If audio is on, check that the new episode reached the cloud feed I listen to (`all/feed.xml` in the bucket) before finishing. If the run log says the cloud upload was skipped or failed, run `podcast-digest/podcast publish` and fetch the feed again to confirm the episode is listed. Never tell me an episode is in my show until it is.
+If audio is on, check that the new episode reached the feed I listen to (`all/feed.xml` on echo-dash) before finishing. If the run log says the tailnet copy failed, run `podcast-digest/podcast publish` and fetch the feed again to confirm the episode is listed. Never tell me an episode is in my show until it is.
 
 Tell me:
 

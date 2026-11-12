@@ -12,6 +12,7 @@ Usage: podcast <command> [<name>] [args]
   canary                  check that `claude -p` still answers
   audio <name>            add any files in incoming-audio/<name>/ to the feed now
   publish                 copy every feed and episode to the tailnet server now (if one is set up)
+  status                  rewrite status.json (every podcast's schedule, last run and latest episodes) and copy it too
   voice <name> [minutes]  voice the latest saved digest and add it to the feed
                           (minutes overrides the length cap, default 20, for this one episode)
 
@@ -24,11 +25,14 @@ import hashlib
 import html
 import json
 import os
+import plistlib
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
+import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -45,6 +49,7 @@ NS = {
     "atom": "http://www.w3.org/2005/Atom",
     "podcast": "https://podcastindex.org/namespace/1.0",
 }
+HTTP_RETRY_WAITS = [5, 20, 60]  # seconds to wait before each further try of a fetch that failed
 MAX_TEXT = 60000  # characters of one item sent to screening
 USER_FILE = ROOT.parent / "USER.md"  # who I am, shared by every podcast
 
@@ -64,10 +69,21 @@ def log(pod, msg):
 
 
 def http_get(url, binary=False, timeout=60):
+    """Fetch a URL. A dropped connection, a timeout or a server error is tried again (HTTP_RETRY_WAITS);
+    a 4xx answer is final."""
     req = urllib.request.Request(url, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        data = r.read()
-    return data if binary else data.decode("utf-8", "replace")
+    for wait in HTTP_RETRY_WAITS + [None]:
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                data = r.read()
+            return data if binary else data.decode("utf-8", "replace")
+        except urllib.error.HTTPError as e:
+            if e.code < 500 or wait is None:
+                raise
+        except OSError:  # URLError, a reset connection, a timeout
+            if wait is None:
+                raise
+        time.sleep(wait)
 
 
 def slug(s, n=60):
@@ -1178,27 +1194,30 @@ def episode_fallback_title(cfg, stem):
 ALL_FEED = "all"  # public/all/feed.xml: every podcast's episodes in one feed
 
 
-def feed_items(name, cfg, eps, audio, guid_prefix=""):
-    """(date, <item> xml) for each mp3 of one podcast."""
+def episode_list(name, cfg, eps, audio):
+    """One podcast's mp3s, newest file name first: file, title, date made, seconds, size and address."""
     base = feed_base(audio) + "/" + name
     tp = episode_titles_file(name)
     titles = json.loads(tp.read_text()) if tp.exists() else {}
     out = []
     for f in sorted(eps.glob("*.mp3"), reverse=True):
-        dur = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(f)],
-                             capture_output=True, text=True).stdout.strip() or "0"
-        date = dt.datetime.fromtimestamp(f.stat().st_mtime, dt.timezone.utc)
-        out.append((date, """    <item>
+        out.append({"file": f.name, "title": titles.get(f.name) or episode_fallback_title(cfg, f.stem),
+                    "date": dt.datetime.fromtimestamp(f.stat().st_mtime, dt.timezone.utc),
+                    "seconds": int(duration(f)), "size": f.stat().st_size, "url": "%s/episodes/%s" % (base, f.name)})
+    return out
+
+
+def feed_items(name, cfg, eps, audio, guid_prefix=""):
+    """(date, <item> xml) for each mp3 of one podcast."""
+    return [(e["date"], """    <item>
       <title>{t}</title>
       <guid isPermaLink="false">{g}</guid>
       <pubDate>{d}</pubDate>
       <enclosure url="{u}" length="{l}" type="audio/mpeg"/>
       <itunes:duration>{s}</itunes:duration>
-    </item>""".format(t=html.escape(titles.get(f.name) or episode_fallback_title(cfg, f.stem)),
-                      g=hashlib.sha1((guid_prefix + f.name).encode()).hexdigest(),
-                      d=email.utils.format_datetime(date), u="%s/episodes/%s" % (base, f.name),
-                      l=f.stat().st_size, s=int(float(dur)))))
-    return out
+    </item>""".format(t=html.escape(e["title"]), g=hashlib.sha1((guid_prefix + e["file"]).encode()).hexdigest(),
+                      d=email.utils.format_datetime(e["date"]), u=e["url"], l=e["size"], s=e["seconds"]))
+            for e in episode_list(name, cfg, eps, audio)]
 
 
 SHOW_TITLE = "Sigurd's DeVeoCast"  # the combined feed, the one the phone follows
@@ -1245,6 +1264,7 @@ def write_feed(name, cfg, pub, eps, audio):
     (pub / "feed.xml").write_text(feed_xml(cfg["title"], "%s/%s/feed.xml" % (feed_base(audio), name), items,
                                            image=artwork_url(audio)))
     write_all_feed(audio)
+    write_status(audio)
     cloud_sync(audio)
 
 
@@ -1265,6 +1285,84 @@ def write_all_feed(audio):
                                            description="Sigurd's private digests, every podcast in one feed."))
 
 
+# ---------- status.json: what is scheduled, what last ran, what was made ----------
+# public/status.json, copied to the tailnet server with the feeds. AdminApp's dashboard reads it there
+# (its Podcasts cards), so it shows what is due even while this Mac is asleep.
+
+LAUNCH_AGENTS = Path.home() / "Library" / "LaunchAgents"
+STATUS_EPISODES = 5   # latest episodes listed per podcast
+STATUS_DAYS_AHEAD = 14
+DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+
+def schedule_agent(name):
+    """The launchd agent that makes this podcast: its own weekday run, or another job named for it
+    under "schedules" in settings.json (the Echo3 weekly pull makes the echo3 episode)."""
+    return (SETTINGS.get("schedules") or {}).get(name) or "local.podcast-digest.run.%s" % name
+
+
+def schedule(name, at):
+    """When launchd runs this podcast: a line of text, whether the agent is loaded, and the times it is
+    due (the last one before `at`, then every one in the next STATUS_DAYS_AHEAD days). None: not scheduled."""
+    agent = schedule_agent(name)
+    plist = LAUNCH_AGENTS / (agent + ".plist")
+    if not plist.exists():
+        return None
+    with open(plist, "rb") as f:
+        cal = plistlib.load(f).get("StartCalendarInterval")
+    if not cal:
+        return None
+    slots = {}  # (hour, minute) -> the days it runs, Monday = 0; launchd counts from Sunday = 0 (or 7)
+    for e in cal if isinstance(cal, list) else [cal]:
+        days = [(e["Weekday"] - 1) % 7] if "Weekday" in e else range(7)
+        slots.setdefault((e.get("Hour", 0), e.get("Minute", 0)), set()).update(days)
+    def days_text(days):
+        if len(days) == 7:
+            return "Every day"
+        if days == {0, 1, 2, 3, 4}:
+            return "Weekdays"
+        return ", ".join(DAY_NAMES[d] for d in sorted(days))
+    text = "; ".join("%s %02d:%02d" % (days_text(days), h, m) for (h, m), days in sorted(slots.items()))
+    today = at.astimezone().date()
+    times = sorted(dt.datetime.combine(today + dt.timedelta(days=n), dt.time(h, m)).astimezone(dt.timezone.utc)
+                   for n in range(-8, STATUS_DAYS_AHEAD + 1) for (h, m), days in slots.items()
+                   if (today + dt.timedelta(days=n)).weekday() in days)
+    past = [t for t in times if t <= at]
+    loaded = subprocess.run(["launchctl", "list", agent], capture_output=True).returncode == 0
+    return {"agent": agent, "text": text, "loaded": loaded,
+            "due": [t.isoformat() for t in past[-1:] + [t for t in times if t > at]]}
+
+
+def write_status(audio):
+    """public/status.json: every podcast's schedule, last fetch and latest episodes."""
+    at = now()
+    pods = []
+    for cfg_path in sorted((ROOT / "podcasts").glob("*/config.json")):
+        name = cfg_path.parent.name
+        cfg, state = load(cfg_path.parent)
+        eps = ROOT / "public" / name / "episodes"
+        made = sorted(episode_list(name, cfg, eps, audio), key=lambda e: e["date"], reverse=True) if eps.is_dir() else []
+        rep = state.get("last_report") or {}
+        pods.append({
+            "name": name, "title": cfg["title"], "schedule": schedule(name, at),
+            "last_run": {"at": state["last_fetch"], "screened": rep.get("screened", 0), "failed": rep.get("failed", 0),
+                         "left": rep.get("left", 0), "unreachable": rep.get("unreachable", [])}
+                        if state.get("last_fetch") else None,
+            "episodes": [{"title": e["title"], "made_at": e["date"].isoformat(), "seconds": e["seconds"], "url": e["url"]}
+                         for e in made[:STATUS_EPISODES]],
+        })
+    out = ROOT / "public" / "status.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps({"generated_at": at.isoformat(), "podcasts": pods}, indent=2))
+
+
+def cmd_status():
+    audio = SETTINGS.get("audio", {})
+    write_status(audio)
+    cloud_sync(audio)
+    print("Status: %s" % (ROOT / "public" / "status.json"))
+
+
 # ---------- copy of the feeds on the tailnet (echo-dash) ----------
 # settings.json audio.cloud: target (the rsync destination) and public_base (the HTTPS address that
 # `tailscale serve` gives that folder). It is tailnet-only, so only your own devices can fetch the feeds.
@@ -1281,13 +1379,13 @@ def feed_base(audio):
 
 
 def cloud_sync(audio):
-    """Mirror the feeds, artwork and episodes in public/ to the tailnet server, removing episodes deleted here.
+    """Mirror the feeds, status.json, artwork and episodes in public/ to the tailnet server, removing episodes deleted here.
     --delay-updates swaps every changed file in at the end, so a feed never points at an episode not yet copied."""
     c = cloud_cfg(audio)
     if not c.get("target"):
         return
     cmd = ["rsync", "-a", "--delete", "--delay-updates", "--prune-empty-dirs", "--chmod=u+rwX,go+rX,go-w", "--itemize-changes",
-           "--include=*/", "--include=feed.xml", "--include=artwork.png", "--include=*.mp3", "--exclude=*",
+           "--include=*/", "--include=feed.xml", "--include=status.json", "--include=artwork.png", "--include=*.mp3", "--exclude=*",
            str(ROOT / "public") + "/", c["target"].rstrip("/") + "/"]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
@@ -1318,9 +1416,12 @@ def cmd_publish():
 
 
 def cmd_run(name):
-    cmd_canary()
-    cmd_fetch(name)
-    cmd_digest(name)
+    try:
+        cmd_canary()
+        cmd_fetch(name)
+        cmd_digest(name)
+    finally:  # also after a run that made no episode or stopped early, so the status shows the run that was due
+        cmd_status()
 
 
 def main(argv):
@@ -1330,7 +1431,7 @@ def main(argv):
     cmd, args = argv[1], argv[2:]
     table = {"canary": (cmd_canary, 0), "test": (cmd_test, 2), "fetch": (cmd_fetch, 1), "rescreen": (cmd_rescreen, 1),
              "preview": (cmd_preview, 1), "digest": (cmd_digest, 1), "run": (cmd_run, 1), "audio": (cmd_audio, 1),
-             "voice": (cmd_voice, (1, 2)), "publish": (cmd_publish, 0)}
+             "voice": (cmd_voice, (1, 2)), "publish": (cmd_publish, 0), "status": (cmd_status, 0)}
     want = table.get(cmd, (None, -1))[1]
     if cmd not in table or len(args) not in (want if isinstance(want, tuple) else (want,)):
         print(__doc__)

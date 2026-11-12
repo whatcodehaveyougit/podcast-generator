@@ -32,7 +32,7 @@ Without Claude Code:
 podcast-digest/podcast run <name>
 ```
 
-Other subcommands: `test`, `fetch`, `rescreen`, `preview`, `digest`, `voice`, `audio` and `canary`. Run the script with no arguments to see them.
+Other subcommands: `test`, `fetch`, `rescreen`, `preview`, `digest`, `voice`, `audio`, `status` and `canary`. Run the script with no arguments to see them.
 
 ## About you: USER.md
 
@@ -54,6 +54,12 @@ Both stay local, like every sources file.
 ## Scheduled podcasts
 
 A podcast can run itself Monday to Friday at 21:00 through a launchd agent that calls `podcast run <name>`. Copy `launchd/podcast-run.example.plist`, replace `NAME` and `ROOT`, save it in `~/Library/LaunchAgents/` and load it with `launchctl bootstrap gui/$(id -u) <plist>`. Output goes to `podcast-digest/logs/run-<name>.log`.
+
+## What is scheduled and what was made: status.json
+
+Every run ends by writing `podcast-digest/public/status.json` and copying it to echo-dash with the feeds: each podcast's schedule (read from its launchd agent), the times it is next due, its last fetch with any unreachable sources, and its five latest episodes. AdminApp's dashboard reads that file for its **Podcasts** panel, which marks a podcast late when a run was due and nothing happened. `podcast status` rewrites it now.
+
+A podcast made by another job's schedule names that job's launchd label under `schedules` in `podcast-digest/settings.json`. The Echo3 briefings are made by the site optimiser's weekly pull: `"schedules": {"echo3": "local.site-analytics.weekly-pull"}`.
 
 The Mac must be awake: a run missed while asleep happens as soon as it wakes. `sudo pmset repeat wakeorpoweron MTWRF 20:55:00` wakes it first, and `caffeinate -i` in the plist keeps it awake until the run ends. A closed laptop on battery will not wake.
 
@@ -104,6 +110,7 @@ podcast-digest/
     digests/<date>-with-source-notes.md   the digest plus every source note behind it
     episode-scripts/<date>.md             the two-host script that was voiced
   public/<name>/episodes/<date>.mp3
+  public/status.json                every podcast's schedule, last run and latest episodes
 ```
 
 Episodes reach the phone through a private podcast feed on echo-dash, an always-on server in your Tailscale network, so the Mac does not need to be awake for listening. Only devices signed in to the tailnet can fetch it. Setup, and why it is built this way: [setup-podcasts-feed.md](setup-podcasts-feed.md).

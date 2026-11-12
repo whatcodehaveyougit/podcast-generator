@@ -109,6 +109,7 @@ Version 1 delivers to a folder. Telegram, email or other channels can be added a
   - `run <name>`: `canary`, then `fetch`, then `digest`. This is the one command I (or a scheduler later) will call.
   - `voice <name>`: voice the latest saved digest and add it to the feed (for example after the voice is first set up).
   - `audio <name>`: add any files in the NotebookLM drop folder to the feed.
+  - `status`: rewrite `public/status.json` (each podcast's schedule from its launchd agent, the times it is next due, its last fetch and its five latest episodes) and copy it to the tailnet server with the feeds. `run` ends with it, also when the run stops early, and every feed update rewrites it. AdminApp's dashboard reads it for its Podcasts panel. A podcast made by another job's schedule names that job's launchd label under `schedules` in `settings.json`.
   - `canary`: check that `claude -p` still answers. The login expires now and then. If it fails, stop and tell me to run `claude`, then `/login`.
 - Check the prerequisites first and ask before installing anything: `claude` (logged in), `python3`, `jq`, `curl`, `ffmpeg`, and a local Whisper (`openai-whisper` from pip, or `mlx-whisper` on Apple Silicon). Download the small Whisper model during setup, not on the first run.
 - Set `PATH` inside the script, so it works when called from outside my shell (`~/.local/bin` and `/opt/homebrew/bin`).
@@ -117,6 +118,7 @@ Version 1 delivers to a folder. Telegram, email or other channels can be added a
 - Delete the audio after a successful transcription. Keep the transcript beside its note. Compress the transcript to one line per 30 seconds before screening, so a three-hour episode fits one `claude -p` call.
 - Treat written CONTENT as text: batch each source's new posts into one note per run.
 - A failed screen is marked `FAILED` in the note and retried once. `rescreen` retries it later.
+- A fetch that drops, times out or gets a server error is tried again after 5, 20 and 60 seconds (`HTTP_RETRY_WAITS`) before its source is listed as unreachable. A 4xx answer is final.
 - Optional, one line: log the input and output token counts from each `claude -p` JSON reply to a usage file, so I can see the cost.
 
 ## Safety rules (keep these exactly)

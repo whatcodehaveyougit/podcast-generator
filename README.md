@@ -57,7 +57,7 @@ A podcast can run itself Monday to Friday at 21:00 through a launchd agent that 
 
 ## What is scheduled and what was made: status.json
 
-Every run ends by writing `podcast-digest/public/status.json` and copying it to echo-dash with the feeds: each podcast's schedule (read from its launchd agent), the times it is next due, its last fetch with any unreachable sources, and its five latest episodes. AdminApp's dashboard reads that file for its **Podcasts** panel, which marks a podcast late when a run was due and nothing happened. `podcast status` rewrites it now.
+Every run ends by writing `podcast-digest/public/status.json` and copying it to echo-dash with the feeds: each podcast's mission (the "Why this podcast exists" paragraph of the `mission-statement.md` in its `context_files`), its schedule (read from its launchd agent), the times it is next due, its last fetch with any unreachable sources, and its five latest episodes. AdminApp's dashboard reads that file for its **Podcasts** panel and page, which marks a podcast late when a run was due and nothing happened. `podcast status` rewrites it now.
 
 A podcast made by another job's schedule names that job's launchd label under `schedules` in `podcast-digest/settings.json`. The Echo3 briefings are made by the site optimiser's weekly pull: `"schedules": {"echo3": "local.site-analytics.weekly-pull"}`.
 
@@ -110,7 +110,7 @@ podcast-digest/
     digests/<date>-with-source-notes.md   the digest plus every source note behind it
     episode-scripts/<date>.md             the two-host script that was voiced
   public/<name>/episodes/<date>.mp3
-  public/status.json                every podcast's schedule, last run and latest episodes
+  public/status.json                every podcast's mission, schedule, last run and latest episodes
 ```
 
 Episodes reach the phone through a private podcast feed on echo-dash, an always-on server in your Tailscale network, so the Mac does not need to be awake for listening. Only devices signed in to the tailnet can fetch it. Setup, and why it is built this way: [setup-podcasts-feed.md](setup-podcasts-feed.md).

@@ -467,14 +467,18 @@ def user_context():
     return "# About me (from USER.md)\n\n" + "\n\n".join(kept)
 
 
+def project_path(f):
+    """A path from a config: relative ones are from the project root."""
+    path = Path(f).expanduser()
+    return path if path.is_absolute() else ROOT.parent / path
+
+
 def context_files(files):
     """Extra files read fresh on every call, so edits to them flow straight in. Missing files are skipped.
     Relative paths are from the project root. Template comments are dropped."""
     parts = []
     for f in files:
-        path = Path(f).expanduser()
-        if not path.is_absolute():
-            path = ROOT.parent / path
+        path = project_path(f)
         if path.exists():
             text = re.sub(r"<!--.*?-->", "", path.read_text(), flags=re.S).strip()
             parts.append("# From %s\n\n%s" % (path.name, text))
@@ -1333,8 +1337,19 @@ def schedule(name, at):
             "due": [t.isoformat() for t in past[-1:] + [t for t in times if t > at]]}
 
 
+def mission(cfg):
+    """The "Why this podcast exists" paragraph of the mission-statement.md in this podcast's context_files.
+    None: it has no mission statement."""
+    for f in cfg.get("context_files", []):
+        path = project_path(f)
+        if path.name == "mission-statement.md" and path.exists():
+            m = re.search(r"^## Why this podcast exists\s*\n(.*?)(?=^#|\Z)", path.read_text(), flags=re.S | re.M)
+            return m.group(1).strip() if m else None
+    return None
+
+
 def write_status(audio):
-    """public/status.json: every podcast's schedule, last fetch and latest episodes."""
+    """public/status.json: every podcast's mission, schedule, last fetch and latest episodes."""
     at = now()
     pods = []
     for cfg_path in sorted((ROOT / "podcasts").glob("*/config.json")):
@@ -1344,7 +1359,7 @@ def write_status(audio):
         made = sorted(episode_list(name, cfg, eps, audio), key=lambda e: e["date"], reverse=True) if eps.is_dir() else []
         rep = state.get("last_report") or {}
         pods.append({
-            "name": name, "title": cfg["title"], "schedule": schedule(name, at),
+            "name": name, "title": cfg["title"], "mission": mission(cfg), "schedule": schedule(name, at),
             "last_run": {"at": state["last_fetch"], "screened": rep.get("screened", 0), "failed": rep.get("failed", 0),
                          "left": rep.get("left", 0), "unreachable": rep.get("unreachable", [])}
                         if state.get("last_fetch") else None,

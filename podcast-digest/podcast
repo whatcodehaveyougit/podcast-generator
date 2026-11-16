@@ -615,6 +615,8 @@ def process(pod, cfg, state, picked):
     """Screen picked items. Podcasts get one note per episode; written posts one note per source."""
     by_written = {}
     results = {"screened": 0, "failed": 0, "skipped": []}
+    total = sum(1 for src, _ in picked if src["type"] != "written") + len({src["name"] for src, _ in picked if src["type"] == "written"})
+    done = 0
     with tempfile.TemporaryDirectory(prefix="fetch-") as tmp:
         work = Path(tmp)
         for src, it in picked:
@@ -626,6 +628,8 @@ def process(pod, cfg, state, picked):
                 results["skipped"].append("%s: %s (%s)" % (src["name"], it["title"], how))
                 continue
             log(pod, "Screening %s: %s (%s)" % (src["name"], it["title"], how))
+            done += 1
+            building_step("Reading %s (%d of %d)" % (src["name"], done, total))
             header = "Source: %s (podcast)\nEpisode: %s\nPublished: %s\nTranscript: %s, one line per 30 seconds" % (
                 src["name"], it["title"], it["date"].date(), how)
             lines = screen(pod, cfg, header, text)
@@ -637,6 +641,8 @@ def process(pod, cfg, state, picked):
             state["seen"].extend(item_keys(it))
             log(pod, "  -> %s%s" % (p.name, "" if lines else " (FAILED)"))
         for name, (src, posts) in by_written.items():
+            done += 1
+            building_step("Reading %s (%d of %d)" % (name, done, total))
             parts, share = [], (MAX_TEXT * 2) // len(posts) - 200  # every post gets an equal share of the call
             for it in posts:
                 text, _ = item_text(src, it, work)
@@ -865,6 +871,7 @@ def set_episode_title(name, mp3_name, title):
 def cmd_digest(name):
     pod = pod_dir(name)
     cfg, state = load(pod)
+    building_step("Writing the digest")
     text, notes = build_digest(pod, cfg, state)
     if not notes:
         log(pod, "No pending notes. Nothing to deliver.")
@@ -898,6 +905,7 @@ def cmd_digest(name):
         voice_digest(pod, name, out)
     except Exception as e:  # the text digest is already saved; never lose it over audio
         log(pod, "Voicing failed: %s" % e)
+    building_step("Publishing the episode")
     cmd_audio(name)
     return out
 
@@ -1113,10 +1121,12 @@ def voice_digest(pod, name, digest_path, max_minutes=None):
     with tempfile.TemporaryDirectory(prefix="voice-") as tmp:
         work = Path(tmp)
         for attempt in range(3):
+            building_step("Writing the episode script" if attempt == 0 else "Rewriting the script shorter")
             turns, needs_more = write_episode_script(pod, material, words, max_minutes)
             turns = check_episode_script(pod, material, turns)
             wav = work / "episode.wav"
             used = None
+            building_step("Recording the audio")
             if audio.get("engine") == "gemini":
                 try:
                     gemini_tts_long(turns, voices, wav, work)
@@ -1348,8 +1358,50 @@ def mission(cfg):
     return None
 
 
+# A scheduled run (`run <name>`) keeps <pod>/building.json up to date with the step it is on, and pushes
+# status.json at every step, so AdminApp can show an episode being made. The file goes when the run ends.
+BUILDING_POD = None  # the podcast folder of the run in progress; None outside `run`
+
+
+def building(pod):
+    """The run making this podcast's next episode: when it started, its step and when that step began.
+    None: no run in progress (or a run that died without removing its file)."""
+    f = pod / "building.json"
+    if not f.exists():
+        return None
+    try:
+        b = json.loads(f.read_text())
+        os.kill(b["pid"], 0)
+    except ProcessLookupError:
+        return None
+    except PermissionError:
+        pass
+    except (ValueError, KeyError, OSError):
+        return None
+    return {"started_at": b["started_at"], "step": b["step"], "step_at": b["step_at"]}
+
+
+def building_step(step):
+    """Record the step the run is on and push status.json. Does nothing outside a scheduled run."""
+    if BUILDING_POD is None:
+        return
+    f = BUILDING_POD / "building.json"
+    at = now().isoformat()
+    try:
+        started = json.loads(f.read_text())["started_at"]
+    except (OSError, ValueError, KeyError):
+        started = at
+    f.write_text(json.dumps({"pid": os.getpid(), "started_at": started, "step": step, "step_at": at}))
+    try:
+        audio = SETTINGS.get("audio", {})
+        write_status(audio)
+        cloud_sync(audio)
+    except Exception as e:  # progress is a nicety; never stop the run over it
+        log(None, "Status update failed: %s" % e)
+
+
 def write_status(audio):
-    """public/status.json: every podcast's mission, schedule, last fetch and latest episodes."""
+    """public/status.json: every podcast's mission, schedule, last fetch, latest episodes and any run in progress."""
     at = now()
     pods = []
     for cfg_path in sorted((ROOT / "podcasts").glob("*/config.json")):
@@ -1365,6 +1417,7 @@ def write_status(audio):
                         if state.get("last_fetch") else None,
             "episodes": [{"title": e["title"], "made_at": e["date"].isoformat(), "seconds": e["seconds"], "url": e["url"]}
                          for e in made[:STATUS_EPISODES]],
+            "building": building(cfg_path.parent),
         })
     out = ROOT / "public" / "status.json"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -1431,11 +1484,17 @@ def cmd_publish():
 
 
 def cmd_run(name):
+    global BUILDING_POD
+    BUILDING_POD = pod_dir(name)
+    (BUILDING_POD / "building.json").unlink(missing_ok=True)
     try:
+        building_step("Checking the sources")
         cmd_canary()
         cmd_fetch(name)
         cmd_digest(name)
     finally:  # also after a run that made no episode or stopped early, so the status shows the run that was due
+        (BUILDING_POD / "building.json").unlink(missing_ok=True)
+        BUILDING_POD = None
         cmd_status()
 
 
